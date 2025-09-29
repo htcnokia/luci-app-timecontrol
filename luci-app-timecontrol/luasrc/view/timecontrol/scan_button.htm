@@ -1,0 +1,41 @@
+<%+cbi/valueheader%>
+<input class="cbi-button cbi-button-apply" type="button" value="<%:Scan Now%>" onclick="scanHostnames()" id="scan-button" />
+<div id="scan-result" style="margin-top: 10px; padding: 10px; display: none; border: 1px solid #ccc; background: #f9f9f9; white-space: pre-wrap; font-family: monospace; font-size: 12px;"></div>
+
+<script type="text/javascript">
+function scanHostnames() {
+	var btn = document.getElementById('scan-button');
+	var result = document.getElementById('scan-result');
+	
+	btn.disabled = true;
+	btn.value = '<%:Scanning...%>';
+	result.style.display = 'none';
+	
+	XHR.get('<%=url("admin/services/timecontrol/scan")%>', null,
+		function(x, data) {
+			btn.disabled = false;
+			btn.value = '<%:Scan Now%>';
+			
+			if (data && data.output) {
+				result.innerHTML = data.output;
+				result.style.display = 'block';
+				result.style.borderColor = data.success ? '#5cb85c' : '#d9534f';
+				result.style.backgroundColor = data.success ? '#dff0d8' : '#f2dede';
+			} else {
+				result.innerHTML = '<%:Scan failed%>';
+				result.style.display = 'block';
+				result.style.borderColor = '#d9534f';
+				result.style.backgroundColor = '#f2dede';
+			}
+			
+			// 5秒后自动刷新页面以显示更新后的配置
+			if (data && data.success && data.output.indexOf('updated') >= 0) {
+				setTimeout(function() {
+					window.location.reload();
+				}, 5000);
+			}
+		}
+	);
+}
+</script>
+<%+cbi/valuefooter%>

@@ -1,2 +1,3 @@
 config basic
 	option enable '0'
+	option scan_interval '10'

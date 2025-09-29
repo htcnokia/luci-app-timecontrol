@@ -1,57 +1,85 @@
-local o = require "luci.sys"
-local a, t, e
-a = Map("timecontrol", translate("Internet Time Control"))
-a.template = "timecontrol/index"
+local sys = require "luci.sys"
+local m, s, o
 
-t = a:section(TypedSection, "basic")
-t.anonymous = true
+m = Map("timecontrol", translate("Internet Time Control"),
+	translate("Configure internet access time control for network devices"))
 
-e = t:option(DummyValue, "timecontrol_status", translate("Status"))
-e.template = "timecontrol/timecontrol"
-e.value = translate("Collecting data...")
+-- Basic Settings Section
+s = m:section(TypedSection, "basic", translate("Basic Settings"))
+s.anonymous = true
+s.addremove = false
 
-e = t:option(Flag, "enable", translate("Enabled"))
-e.rmempty = false
+o = s:option(Flag, "enable", translate("Enable Time Control"))
+o.rmempty = false
+o.default = "0"
 
-t = a:section(TypedSection, "macbind", translate("Client Settings"), translate("Internet disabling settings for clients."))
-t.template = "cbi/tblsection"
-t.anonymous = true
-t.addremove = true
+o = s:option(Value, "scan_interval", translate("Hostname Scan Interval"), 
+	translate("Scan interval in minutes (0 to disable automatic scanning)"))
+o.datatype = "uinteger"
+o.default = "10"
+o.rmempty = false
 
-e = t:option(Flag, "enable", translate("Enabled"))
-e.rmempty = false
+o = s:option(Button, "scan_now", translate("Scan Hostnames Now"))
+o.inputtitle = translate("Scan Now")
+o.inputstyle = "apply"
+-- 添加JavaScript来处理扫描结果显示
+o.template = "timecontrol/scan_button"
 
-e = t:option(Value, "macaddr", "MAC")
-e.rmempty = true
-o.net.mac_hints(function(t, a) e:value(t, "%s (%s)" % {t, a}) end)
+-- Client Settings Section
+s = m:section(TypedSection, "macbind", translate("Client Rules"),
+	translate("Configure time-based internet access rules for clients"))
+s.anonymous = true
+s.addremove = true
+s.template = "cbi/tblsection"
 
-e = t:option(Value, "timeon", translate("No Internet start time"))
-e.default = "00:00"
-e.optional = false
+o = s:option(Flag, "enable", translate("Enable"))
+o.rmempty = false
+o.default = "1"
 
-e = t:option(Value, "timeoff", translate("No Internet end time"))
-e.default = "23:59"
-e.optional = false
+o = s:option(Value, "macaddr", translate("MAC Address"))
+o.rmempty = true
+sys.net.mac_hints(function(mac, name) 
+	o:value(mac, "%s (%s)" % {mac, name}) 
+end)
 
-e = t:option(Flag, "z1", translate("Mo"))
-e.rmempty = true
+o = s:option(Value, "hostname", translate("Hostname"))
+o.rmempty = true
+o.placeholder = "e.g., TIZEN, MyPhone"
 
-e = t:option(Flag, "z2", translate("Tu"))
-e.rmempty = true
+o = s:option(Value, "timeon", translate("Block Start Time"))
+o.default = "22:00"
+o.rmempty = false
 
-e = t:option(Flag, "z3", translate("We"))
-e.rmempty = true
+o = s:option(Value, "timeoff", translate("Block End Time"))  
+o.default = "06:00"
+o.rmempty = false
 
-e = t:option(Flag, "z4", translate("Th"))
-e.rmempty = true
+o = s:option(Flag, "z1", translate("Mon"))
+o.rmempty = true
+o.default = "0"
 
-e = t:option(Flag, "z5", translate("Fr"))
-e.rmempty = true
+o = s:option(Flag, "z2", translate("Tue"))
+o.rmempty = true
+o.default = "0"
 
-e = t:option(Flag, "z6", translate("Sa"))
-e.rmempty = true
+o = s:option(Flag, "z3", translate("Wed"))
+o.rmempty = true
+o.default = "0"
 
-e = t:option(Flag, "z7", translate("Su"))
-e.rmempty = true
+o = s:option(Flag, "z4", translate("Thu"))
+o.rmempty = true
+o.default = "0"
 
-return a
+o = s:option(Flag, "z5", translate("Fri"))
+o.rmempty = true
+o.default = "0"
+
+o = s:option(Flag, "z6", translate("Sat"))
+o.rmempty = true
+o.default = "0"
+
+o = s:option(Flag, "z7", translate("Sun"))
+o.rmempty = true
+o.default = "0"
+
+return m
