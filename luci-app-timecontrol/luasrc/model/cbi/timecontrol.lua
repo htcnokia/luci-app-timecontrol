@@ -112,6 +112,12 @@ o = s:option(Flag, "enabled", translate("Enable Time Control"))
 o.rmempty = false
 o.default = "0"
 
+-- 嚴格模式
+o = s:option(Flag, "strict_mode", translate("Strict Mode"),
+    translate("Block ALL traffic including established connections. Recommended for better control."))
+o.rmempty = false
+o.default = "1"
+
 -- 主机扫描间隔
 o = s:option(Value, "scan_interval", translate("Hostname Scan Interval"), 
     translate("Scan interval in minutes (0 to disable automatic scanning)"))
@@ -135,6 +141,17 @@ o = s:option(Flag, "enable", translate("Enable"))
 o.rmempty = false
 o.default = "1"
 
+-- 在 CBI 模型中添加控制模式选择
+o = s:option(ListValue, "control_mode", translate("Control Mode"))
+o:value("mac", translate("MAC Address (for devices with fixed MAC)"))
+o:value("ip", translate("IP Address (for devices with random MAC)"))
+o.default = "mac"
+
+-- IP 地址字段
+o = s:option(Value, "ipaddr", translate("IP Address"))
+o.placeholder = "192.168.1.100"
+o:depends("control_mode", "ip")
+
 -- MAC地址选择
 o = s:option(Value, "macaddr", translate("MAC Address"))
 o.rmempty = true
@@ -145,15 +162,15 @@ end)
 -- 主机名
 o = s:option(Value, "hostname", translate("Hostname"))
 o.rmempty = true
-o.placeholder = "e.g., TIZEN, MyPhone"
+o.placeholder = "e.g., TIZEN"
 
 -- 限制开始/结束时间
 o = s:option(Value, "timeon", translate("Block Start Time"))
-o.default = "22:00"
+o.default = "22:30"
 o.rmempty = false
 
 o = s:option(Value, "timeoff", translate("Block End Time"))  
-o.default = "06:00"
+o.default = "07:00"
 o.rmempty = false
 
 -- 星期选择

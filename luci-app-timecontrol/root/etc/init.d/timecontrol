@@ -7,6 +7,10 @@ CONFIG=timecontrol
 EXTRA_COMMANDS="scan"
 EXTRA_HELP="       scan            Scan and update MAC addresses (add 'showlogs' for detailed output)"
 
+EXTRA_COMMANDS="scan enforce"
+EXTRA_HELP="        scan            Scan and update MAC addresses
+        enforce         Enforce time control by clearing connections"
+
 uci_get_by_type() {
 	local index=0
 	[ -n $4 ] && index=$4
@@ -174,15 +178,15 @@ remove_cron_job() {
 
 add_rule(){
 	local count=$(uci show $CONFIG 2>/dev/null | grep "=macbind" | wc -l)
-	[ "$count" -eq 0 ] && {
-		echo "No rules to add"
-		return
-	}
-	
+	[ "$count" -eq 0 ] && return
+
+	local strict_mode=$(uci_get_by_type basic strict_mode 1)
 	count=$((count - 1))
-	
+
 	for i in $(seq 0 $count); do
 		local enable=$(uci -q get $CONFIG.@macbind[$i].enable)
+		local control_mode=$(uci -q get $CONFIG.@macbind[$i].control_mode)
+		local ipaddr=$(uci -q get $CONFIG.@macbind[$i].ipaddr)
 		local macaddr=$(uci -q get $CONFIG.@macbind[$i].macaddr)
 		local timeoff=$(uci -q get $CONFIG.@macbind[$i].timeoff)
 		local timeon=$(uci -q get $CONFIG.@macbind[$i].timeon)
@@ -193,56 +197,53 @@ add_rule(){
 		local z5=$(uci -q get $CONFIG.@macbind[$i].z5)
 		local z6=$(uci -q get $CONFIG.@macbind[$i].z6)
 		local z7=$(uci -q get $CONFIG.@macbind[$i].z7)
-		
-		[ "$z1" == "1" ] && local Z1="Mon,"
-		[ "$z2" == "1" ] && local Z2="Tue,"
-		[ "$z3" == "1" ] && local Z3="Wed,"
-		[ "$z4" == "1" ] && local Z4="Thu,"
-		[ "$z5" == "1" ] && local Z5="Fri,"
-		[ "$z6" == "1" ] && local Z6="Sat,"
-		[ "$z7" == "1" ] && local Z7="Sun"
-		
-		if [ -z "$enable" ] || [ -z "$macaddr" ] || [ -z "$timeoff" ] || [ -z "$timeon" ]; then
+
+		[ "$enable" != "1" ] && continue
+		[ -z "$timeon" ] || [ -z "$timeoff" ] && continue
+
+		# 生成匹配条件
+		local match_rule=""
+		if [ "$control_mode" = "ip" ] && [ -n "$ipaddr" ]; then
+			match_rule="-s $ipaddr"
+		elif [ -n "$macaddr" ] && is_mac_address "$macaddr"; then
+			match_rule="-m mac --mac-source $macaddr"
+		else
 			continue
 		fi
-		
-		# 只處理MAC地址格式的條目
-		if [ "$enable" == "1" ] && is_mac_address "$macaddr"; then
-			# 轉換時間為分鐘數進行比較
-			local timeon_minutes=$(echo "$timeon" | awk -F: '{print $1 * 60 + $2}')
-			local timeoff_minutes=$(echo "$timeoff" | awk -F: '{print $1 * 60 + $2}')
-			
-			# ★★★ 關鍵修復：判斷是否跨日 ★★★
-			if [ "$timeon_minutes" -ge "$timeoff_minutes" ]; then
-				# 跨日情況：需要兩條規則
-				# 規則1：今天 timeon 到 23:59
-				iptables -t filter -I TIMECONTROL -m mac --mac-source $macaddr \
-					-m time --kerneltz --timestart $timeon --timestop 23:59 \
-					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -j DROP
-				iptables -t nat -I PREROUTING 1 -m mac --mac-source $macaddr \
-					-m time --kerneltz --timestart $timeon --timestop 23:59 \
-					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -m comment --comment "TIMECONTROL" -j RETURN
-				
-				# 規則2：明天 00:00 到 timeoff
-				iptables -t filter -I TIMECONTROL -m mac --mac-source $macaddr \
-					-m time --kerneltz --timestart 00:00 --timestop $timeoff \
-					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -j DROP
-				iptables -t nat -I PREROUTING 1 -m mac --mac-source $macaddr \
-					-m time --kerneltz --timestart 00:00 --timestop $timeoff \
-					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -m comment --comment "TIMECONTROL" -j RETURN
-			else
-				# 同日情況：一條規則即可
-				iptables -t filter -I TIMECONTROL -m mac --mac-source $macaddr \
-					-m time --kerneltz --timestart $timeon --timestop $timeoff \
-					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -j DROP
-				iptables -t nat -I PREROUTING 1 -m mac --mac-source $macaddr \
-					-m time --kerneltz --timestart $timeon --timestop $timeoff \
-					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -m comment --comment "TIMECONTROL" -j RETURN
-			fi
+
+		# 严格模式 → 不限制 conntrack 状态，宽松模式 → 只拦新连接
+		local conntrack_rule=""
+		[ "$strict_mode" != "1" ] && conntrack_rule="-m conntrack --ctstate NEW"
+
+		# 星期拼接
+		local weekdays=""
+		[ "$z1" = "1" ] && weekdays="${weekdays}Mon,"
+		[ "$z2" = "1" ] && weekdays="${weekdays}Tue,"
+		[ "$z3" = "1" ] && weekdays="${weekdays}Wed,"
+		[ "$z4" = "1" ] && weekdays="${weekdays}Thu,"
+		[ "$z5" = "1" ] && weekdays="${weekdays}Fri,"
+		[ "$z6" = "1" ] && weekdays="${weekdays}Sat,"
+		[ "$z7" = "1" ] && weekdays="${weekdays}Sun,"
+		weekdays=${weekdays%,}
+
+		local timeon_minutes=$(echo "$timeon" | awk -F: '{print $1 * 60 + $2}')
+		local timeoff_minutes=$(echo "$timeoff" | awk -F: '{print $1 * 60 + $2}')
+
+		if [ "$timeon_minutes" -ge "$timeoff_minutes" ]; then
+			# 跨日：拆成两段
+			iptables -t filter -I TIMECONTROL $match_rule $conntrack_rule \
+				-m time --kerneltz --timestart $timeon --timestop 23:59 \
+				--weekdays $weekdays -j DROP
+			iptables -t filter -I TIMECONTROL $match_rule $conntrack_rule \
+				-m time --kerneltz --timestart 00:00 --timestop $timeoff \
+				--weekdays $weekdays -j DROP
+		else
+			# 同日
+			iptables -t filter -I TIMECONTROL $match_rule $conntrack_rule \
+				-m time --kerneltz --timestart $timeon --timestop $timeoff \
+				--weekdays $weekdays -j DROP
 		fi
 	done
-	
-	echo "/etc/init.d/timecontrol restart" > "/var/etc/timecontrol.include"
 }
 
 del_rule(){
@@ -264,23 +265,20 @@ del_rule(){
 start(){
 	ENABLED=$(uci_get_by_type basic enabled 0)
 	[ "$ENABLED" != "1" ] && exit 0
-	
-	# 设置定时任务
+
 	setup_cron_job
-	
+
 	iptables -t filter -N TIMECONTROL
 	iptables -t filter -I FORWARD -j TIMECONTROL
 	add_rule
 }
 
 stop(){
-	# 移除定时任务
-	remove_cron_job
-	
+	crontab -l 2>/dev/null | grep -v "/etc/init.d/timecontrol" | crontab -
+
 	iptables -t filter -D FORWARD -j TIMECONTROL 2>/dev/null
 	iptables -t filter -F TIMECONTROL 2>/dev/null
 	iptables -t filter -X TIMECONTROL 2>/dev/null
-	del_rule
 }
 
 # 扫描功能 - 支持showlogs参数
@@ -325,3 +323,89 @@ reload(){
 	start
 	echo "Reload completed"
 }
+
+# ========================================
+# 4. 添加定時清理 conntrack 的 cron 任務
+# ========================================
+
+setup_cron_job() {
+	local scan_interval=$(uci_get_by_type basic scan_interval 0)
+	local strict_mode=$(uci_get_by_type basic strict_mode 1)
+
+	crontab -l 2>/dev/null | grep -v "/etc/init.d/timecontrol" | crontab -
+
+	if [ "$scan_interval" -gt 0 ]; then
+		(crontab -l 2>/dev/null; echo "*/$scan_interval * * * * /etc/init.d/timecontrol scan >/dev/null 2>&1") | crontab -
+	fi
+
+	if [ "$strict_mode" = "1" ]; then
+		# 每分钟强制检查（兜底）
+		(crontab -l 2>/dev/null; echo "* * * * * /etc/init.d/timecontrol enforce >/dev/null 2>&1") | crontab -
+
+		# 规则切换点触发 enforce
+		local count=$(uci show $CONFIG 2>/dev/null | grep "=macbind" | wc -l)
+		count=$((count - 1))
+		for i in $(seq 0 $count); do
+			local enable=$(uci -q get $CONFIG.@macbind[$i].enable)
+			local timeoff=$(uci -q get $CONFIG.@macbind[$i].timeoff)
+			local timeon=$(uci -q get $CONFIG.@macbind[$i].timeon)
+
+			[ "$enable" != "1" ] && continue
+			[ -z "$timeon" ] || [ -z "$timeoff" ] && continue
+
+			local h_on=$(echo $timeon | cut -d: -f1)
+			local m_on=$(echo $timeon | cut -d: -f2)
+			local h_off=$(echo $timeoff | cut -d: -f1)
+			local m_off=$(echo $timeoff | cut -d: -f2)
+
+			(crontab -l 2>/dev/null; echo "$m_on $h_on * * * /etc/init.d/timecontrol enforce >/dev/null 2>&1") | crontab -
+			(crontab -l 2>/dev/null; echo "$m_off $h_off * * * /etc/init.d/timecontrol enforce >/dev/null 2>&1") | crontab -
+		done
+	fi
+}
+
+# ★ 新增 enforce 命令（強制執行）
+enforce() {
+	local count=$(uci show $CONFIG 2>/dev/null | grep "=macbind" | wc -l)
+	[ "$count" -eq 0 ] && return 0
+
+	count=$((count - 1))
+	local now_hour=$(date +%H)
+	local now_min=$(date +%M)
+	local now_minutes=$((10#$now_hour * 60 + 10#$now_min))
+	local any_block=0
+
+	for i in $(seq 0 $count); do
+		local enable=$(uci -q get $CONFIG.@macbind[$i].enable)
+		local control_mode=$(uci -q get $CONFIG.@macbind[$i].control_mode)
+		local ipaddr=$(uci -q get $CONFIG.@macbind[$i].ipaddr)
+		local macaddr=$(uci -q get $CONFIG.@macbind[$i].macaddr)
+		local timeoff=$(uci -q get $CONFIG.@macbind[$i].timeoff)
+		local timeon=$(uci -q get $CONFIG.@macbind[$i].timeon)
+
+		[ "$enable" != "1" ] && continue
+		[ -z "$timeon" ] || [ -z "$timeoff" ] && continue
+
+		local timeon_minutes=$(echo "$timeon" | awk -F: '{print $1 * 60 + $2}')
+		local timeoff_minutes=$(echo "$timeoff" | awk -F: '{print $1 * 60 + $2}')
+
+		local in_block_time=0
+		if [ "$timeon_minutes" -ge "$timeoff_minutes" ]; then
+			[ "$now_minutes" -ge "$timeon_minutes" ] || [ "$now_minutes" -lt "$timeoff_minutes" ] && in_block_time=1
+		else
+			[ "$now_minutes" -ge "$timeon_minutes" ] && [ "$now_minutes" -lt "$timeoff_minutes" ] && in_block_time=1
+		fi
+
+		if [ "$in_block_time" = "1" ]; then
+			any_block=1
+			if [ "$control_mode" = "ip" ] && [ -n "$ipaddr" ]; then
+				conntrack -D -s $ipaddr 2>/dev/null || true
+			elif [ -n "$macaddr" ] && is_mac_address "$macaddr"; then
+				conntrack -D -m mac --mac-src $macaddr 2>/dev/null || true
+			fi
+		fi
+	done
+
+	[ "$any_block" -eq 0 ] && return 0
+}
+

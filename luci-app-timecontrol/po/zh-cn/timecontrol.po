@@ -10,6 +10,12 @@ msgstr "警告：检测到启用了类似 Turbo ACC (flow offload)的功能，�
 msgid "Enable Time Control"
 msgstr "启用时间控制"
 
+msgid "Strict Mode"
+msgstr "严格模式"
+
+msgid "Block ALL traffic including established connections. Recommended for better control."
+msgstr "会清除已经建立连接，推荐开启以取得更好的效果."
+
 msgid "Hostname Scan Interval"
 msgstr "主机名扫描间隔"
 
@@ -36,6 +42,18 @@ msgstr "为客户端配置基于时间的上网控制规则"
 
 msgid "Enable"
 msgstr "启用"
+
+msgid "Control Mode"
+msgstr "控制模式"
+
+msgid "MAC Address (for devices with fixed MAC)"
+msgstr "MAC模式（支持动态MAC，请填写主机名）"
+
+msgid "IP Address (for devices with random MAC)"
+msgstr "IP模式"
+
+msgid "IP Address"
+msgstr "IP地址"
 
 msgid "MAC Address"
 msgstr "MAC地址"

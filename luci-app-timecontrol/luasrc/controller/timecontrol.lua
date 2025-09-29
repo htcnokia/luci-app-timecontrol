@@ -30,8 +30,8 @@ function action_turbo_process()
         local max_timeoff = nil
         uci:foreach("timecontrol", "macbind", function(section)
             if section.enable == "1" then
-                local timeon = section.timeon or "22:00"
-                local timeoff = section.timeoff or "06:00"
+                local timeon = section.timeon or "22:30"
+                local timeoff = section.timeoff or "07:00"
                 local ton = time_to_minutes(timeon)
                 local toff = time_to_minutes(timeoff)
                 if not min_timeon or ton < min_timeon then min_timeon = ton end
