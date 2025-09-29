@@ -1,0 +1,6 @@
+# Time Control Configuration
+
+config basic 'config'
+	option enabled '0'
+	option scan_interval '10'
+

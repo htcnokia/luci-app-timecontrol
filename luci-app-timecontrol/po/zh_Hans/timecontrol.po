@@ -1,0 +1,104 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Internet Time Control"
+msgstr "上网时间控制"
+
+msgid "Enable Time Control"
+msgstr "启用时间控制"
+
+msgid "Warning: Turbo ACC/offload detected, may cause iptables rules of this plugin to fail"
+msgstr "警告：检测到启用了类似 Turbo ACC (flow offload)的功能，这会导致本插件的 iptables 规则失效。"
+
+msgid "Hostname Scan Interval"
+msgstr "主机名扫描间隔"
+
+msgid "Scan interval in minutes (0 to disable automatic scanning)"
+msgstr "扫描间隔分钟数（0表示禁用自动扫描）"
+
+msgid "Scan Hostnames Now"
+msgstr "立即扫描主机名"
+
+msgid "Scan Now"
+msgstr "立即扫描"
+
+msgid "Scanning..."
+msgstr "正在扫描..."
+
+msgid "Scan failed"
+msgstr "扫描失败"
+
+msgid "Client Rules"
+msgstr "客户端规则"
+
+msgid "Configure time-based internet access rules for clients"
+msgstr "为客户端配置基于时间的上网控制规则"
+
+msgid "Enable"
+msgstr "启用"
+
+msgid "MAC Address"
+msgstr "MAC地址"
+
+msgid "Hostname"
+msgstr "主机名"
+
+msgid "Block Start Time"
+msgstr "禁止上网开始时间"
+
+msgid "Block End Time"
+msgstr "禁止上网结束时间"
+
+msgid "Mon"
+msgstr "周一"
+
+msgid "Tue"
+msgstr "周二"
+
+msgid "Wed"
+msgstr "周三"
+
+msgid "Thu"
+msgstr "周四"
+
+msgid "Fri"
+msgstr "周五"
+
+msgid "Sat"
+msgstr "周六"
+
+msgid "Sun"
+msgstr "周日"
+
+msgid "Running"
+msgstr "运行中"
+
+msgid "Not Running"
+msgstr "未运行"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "Collecting data..."
+msgstr "正在收集数据..."
+
+msgid "Basic Settings"
+msgstr "基本设置"
+
+msgid "Configure internet access time control for network devices"
+msgstr "配置网络设备的上网时间控制"
+
+msgid "Process Turbo ACC"
+msgstr "处理 Turbo ACC"
+
+msgid "Processing..."
+msgstr "处理中..."
+
+msgid "Turbo ACC Result:"
+msgstr "Turbo ACC 结果："
+
+msgid "Error:"
+msgstr "错误："
+
+msgid "Failed to process Turbo ACC"
+msgstr "处理 Turbo ACC 失败"
