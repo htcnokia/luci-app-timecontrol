@@ -735,10 +735,39 @@ add_rule(){
 			continue
 		fi
 		
-		# 只处理MAC地址格式的条目
+		# 只處理MAC地址格式的條目
 		if [ "$enable" == "1" ] && is_mac_address "$macaddr"; then
-			iptables -t filter -I TIMECONTROL -m mac --mac-source $macaddr -m time --kerneltz --timestart $timeon --timestop $timeoff --weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -j DROP
-			iptables -t nat -I PREROUTING 1 -m mac --mac-source $macaddr -m time --kerneltz --timestart $timeon --timestop $timeoff --weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -m comment --comment "TIMECONTROL" -j RETURN
+			# 轉換時間為分鐘數進行比較
+			local timeon_minutes=$(echo "$timeon" | awk -F: '{print $1 * 60 + $2}')
+			local timeoff_minutes=$(echo "$timeoff" | awk -F: '{print $1 * 60 + $2}')
+			
+			# ★★★ 關鍵修復：判斷是否跨日 ★★★
+			if [ "$timeon_minutes" -ge "$timeoff_minutes" ]; then
+				# 跨日情況：需要兩條規則
+				# 規則1：今天 timeon 到 23:59
+				iptables -t filter -I TIMECONTROL -m mac --mac-source $macaddr \
+					-m time --kerneltz --timestart $timeon --timestop 23:59 \
+					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -j DROP
+				iptables -t nat -I PREROUTING 1 -m mac --mac-source $macaddr \
+					-m time --kerneltz --timestart $timeon --timestop 23:59 \
+					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -m comment --comment "TIMECONTROL" -j RETURN
+				
+				# 規則2：明天 00:00 到 timeoff
+				iptables -t filter -I TIMECONTROL -m mac --mac-source $macaddr \
+					-m time --kerneltz --timestart 00:00 --timestop $timeoff \
+					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -j DROP
+				iptables -t nat -I PREROUTING 1 -m mac --mac-source $macaddr \
+					-m time --kerneltz --timestart 00:00 --timestop $timeoff \
+					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -m comment --comment "TIMECONTROL" -j RETURN
+			else
+				# 同日情況：一條規則即可
+				iptables -t filter -I TIMECONTROL -m mac --mac-source $macaddr \
+					-m time --kerneltz --timestart $timeon --timestop $timeoff \
+					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -j DROP
+				iptables -t nat -I PREROUTING 1 -m mac --mac-source $macaddr \
+					-m time --kerneltz --timestart $timeon --timestop $timeoff \
+					--weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -m comment --comment "TIMECONTROL" -j RETURN
+			fi
 		fi
 	done
 	
