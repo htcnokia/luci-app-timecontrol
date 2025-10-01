@@ -1,0 +1,24 @@
+<%+header%>
+<div class="cbi-section">
+	<div class="cbi-section-node">
+		<div class="cbi-value">
+			<label class="cbi-value-title"><%:Status%>:</label>
+			<div class="cbi-value-field">
+				<span id="service-status" style="font-weight:bold;"><%:Collecting data...%></span>
+			</div>
+		</div>
+	</div>
+</div>
+<%- include("cbi/map") -%>
+<script type="text/javascript">
+	XHR.poll(3, '<%=url("admin/services/timecontrol/status")%>', null,
+		function(x, result) {
+			var status = document.getElementById('service-status');
+			if (status && result) {
+				status.style.color = result.status ? 'green' : 'red';
+				status.innerHTML = result.status ? '<%:Running%>' : '<%:Not Running%>';
+			}
+		}
+	);
+</script>
+<%+footer%>

@@ -1,0 +1,7 @@
+# Time Control Configuration
+
+config basic 'config'
+	option enabled '0'
+	option scan_interval '10'
+	option strict_mode '1'  # ★ 新增：嚴格模式開關
+
