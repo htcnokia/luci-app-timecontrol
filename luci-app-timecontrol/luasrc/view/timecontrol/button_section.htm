@@ -1,0 +1,107 @@
+<style>
+.tc-button-group {
+    display: flex;
+    gap: 12px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.tc-button-group .cbi-button {
+    padding: 8px 20px;
+    min-width: 140px;
+}
+.tc-result {
+    width: 100%;
+    margin-top: 15px;
+    padding: 12px 15px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    font-family: monospace;
+    font-size: 13px;
+    display: none;
+}
+</style>
+
+<div class="cbi-section">
+    <div class="cbi-section-node">
+        <div class="tc-button-group">
+            <input class="cbi-button cbi-button-apply" type="button" 
+                   value="<%:Scan Now%>" onclick="tcScanHostnames()" id="tc-scan-btn" />
+            
+            <input class="cbi-button cbi-button-apply" type="button" 
+                   value="<%:Process Turbo ACC%>" onclick="tcHandleTurbo()" id="tc-turbo-btn" />
+        </div>
+        
+        <div id="tc-result" class="tc-result"></div>
+    </div>
+</div>
+
+<script type="text/javascript">
+// 扫描主机名功能
+function tcScanHostnames() {
+    var btn = document.getElementById('tc-scan-btn');
+    var result = document.getElementById('tc-result');
+    
+    btn.disabled = true;
+    btn.value = '<%:Scanning...%>';
+    result.style.display = 'none';
+    
+    XHR.get('<%=url("admin/services/timecontrol/scan")%>', null,
+        function(x, data) {
+            btn.disabled = false;
+            btn.value = '<%:Scan Now%>';
+            
+            if (data && data.output) {
+                result.innerHTML = data.output.replace(/\n/g, '<br>');
+                result.style.display = 'block';
+                result.style.border = '1px solid ' + (data.success ? '#5cb85c' : '#d9534f');
+                result.style.backgroundColor = data.success ? '#dff0d8' : '#f2dede';
+                
+                // 如果有更新，5秒后刷新页面
+                if (data.success && data.output.indexOf('updated') >= 0) {
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 5000);
+                }
+            } else {
+                result.innerHTML = '<%:Scan failed%>';
+                result.style.display = 'block';
+                result.style.border = '1px solid #d9534f';
+                result.style.backgroundColor = '#f2dede';
+            }
+        }
+    );
+}
+
+// 处理Turbo ACC任务
+function tcHandleTurbo() {
+    var btn = document.getElementById('tc-turbo-btn');
+    var result = document.getElementById('tc-result');
+    
+    btn.disabled = true;
+    btn.value = '<%:Processing...%>';
+    result.style.display = 'none';
+    
+    fetch('<%=luci.dispatcher.build_url("admin", "services", "timecontrol", "turbo_process")%>')
+        .then(function(response) {
+            if (!response.ok) throw new Error('Network error');
+            return response.text();
+        })
+        .then(function(text) {
+            result.innerHTML = '<strong><%:Turbo ACC Result:%></strong><br>' + text.replace(/\n/g, '<br>');
+            result.style.display = 'block';
+            result.style.border = '1px solid #5cb85c';
+            result.style.backgroundColor = '#dff0d8';
+            btn.disabled = false;
+            btn.value = '<%:Process Turbo ACC%>';
+        })
+        .catch(function(error) {
+            result.innerHTML = '<strong><%:Error:%></strong> <%:Failed to process Turbo ACC%>';
+            result.style.display = 'block';
+            result.style.border = '1px solid #d9534f';
+            result.style.backgroundColor = '#f2dede';
+            btn.disabled = false;
+            btn.value = '<%:Process Turbo ACC%>';
+        });
+}
+</script>

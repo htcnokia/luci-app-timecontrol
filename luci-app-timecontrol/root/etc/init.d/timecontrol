@@ -3,6 +3,14 @@
 START=99
 CONFIG=timecontrol
 
+# 注册额外命令（关键添加部分）
+EXTRA_COMMANDS="scan"
+EXTRA_HELP="       scan            Scan and update MAC addresses (add 'showlogs' for detailed output)"
+
+EXTRA_COMMANDS="scan enforce"
+EXTRA_HELP="        scan            Scan and update MAC addresses
+        enforce         Enforce time control by clearing connections"
+
 uci_get_by_type() {
 	local index=0
 	[ -n $4 ] && index=$4
@@ -10,42 +18,232 @@ uci_get_by_type() {
 	echo ${ret:=$3}
 }
 
+# 通过hostname查找MAC地址 - 增强调试输出（修复日志混入MAC的问题）
+get_mac_by_hostname() {
+	local hostname="$1"
+	local showlogs="$2"
+	local mac=""
+	
+	# 日志输出重定向到stderr（>&2），避免混入MAC结果
+	[ "$showlogs" = "showlogs" ] && echo "Searching MAC for hostname: $hostname" >&2
+	
+	# 首先尝试从 /tmp/dhcp.leases 查找
+	if [ -f "/tmp/dhcp.leases" ]; then
+		mac=$(awk -v host="$hostname" 'tolower($4) == tolower(host) {print toupper($2)}' /tmp/dhcp.leases | head -n1)
+		[ "$showlogs" = "showlogs" ] && [ -n "$mac" ] && echo "  Found in dhcp.leases: $mac" >&2
+	fi
+	
+	# 如果没找到，尝试从 ARP 表查找（通过主机名）
+	if [ -z "$mac" ]; then
+		[ "$showlogs" = "showlogs" ] && echo "  Not found in dhcp.leases, trying ping..." >&2
+		ping -c 1 -W 1 "$hostname" >/dev/null 2>&1
+		mac=$(arp -n | awk '{print toupper($3)}' | grep -E '^([0-9A-F]{2}:){5}[0-9A-F]{2}$' | head -n1)
+		[ "$showlogs" = "showlogs" ] && [ -n "$mac" ] && echo "  Found via ping/arp: $mac" >&2
+	fi
+	
+	# 尝试通过nslookup解析IP后查找
+	if [ -z "$mac" ]; then
+		[ "$showlogs" = "showlogs" ] && echo "  Trying DNS lookup..." >&2
+		local ip=$(nslookup "$hostname" 2>/dev/null | awk '/^Address.*: [0-9]/ {print $NF}' | grep -v "127.0.0.1" | head -n1)
+		if [ -n "$ip" ]; then
+			[ "$showlogs" = "showlogs" ] && echo "  Resolved IP: $ip" >&2
+			ping -c 1 -W 1 "$ip" >/dev/null 2>&1
+			mac=$(arp -n | awk -v ip="$ip" '$1 == ip {print toupper($3)}' | head -n1)
+			[ "$showlogs" = "showlogs" ] && [ -n "$mac" ] && echo "  Found via IP/ARP: $mac" >&2
+		fi
+	fi
+	
+	# 最后尝试直接从ARP表匹配主机名
+	if [ -z "$mac" ]; then
+		[ "$showlogs" = "showlogs" ] && echo "  Checking ARP table directly..." >&2
+		mac=$(arp -a | grep -i "$hostname" | awk -F'[()]' '{print $2}' | xargs -I{} arp -n {} 2>/dev/null | awk '{print toupper($3)}' | grep -E '^([0-9A-F]{2}:){5}[0-9A-F]{2}$' | head -n1)
+		[ "$showlogs" = "showlogs" ] && [ -n "$mac" ] && echo "  Found in ARP table: $mac" >&2
+	fi
+	
+	[ "$showlogs" = "showlogs" ] && [ -z "$mac" ] && echo "  WARNING: MAC not found for $hostname" >&2
+	
+	# 仅输出MAC地址（标准输出），供外部变量捕获
+	echo "$mac"
+}
+
+# 检查字符串是否为MAC地址格式
+is_mac_address() {
+	local addr="$1"
+	echo "$addr" | grep -qiE '^([0-9a-f]{2}:){5}[0-9a-f]{2}$'
+	return $?
+}
+
+# 扫描并更新hostname对应的MAC地址 - 添加详细日志
+scan_and_update_mac() {
+	local showlogs="$1"
+	local updated=0
+	local count=$(uci show $CONFIG 2>/dev/null | grep "=macbind" | wc -l)
+	
+	if [ "$count" -eq 0 ]; then
+		[ "$showlogs" = "showlogs" ] && echo "No macbind entries found in configuration"
+		return 1
+	fi
+	
+	count=$((count - 1))
+	[ "$showlogs" = "showlogs" ] && echo "========================================="
+	[ "$showlogs" = "showlogs" ] && echo "Starting hostname scan..."
+	[ "$showlogs" = "showlogs" ] && echo "Found $((count + 1)) macbind entries"
+	[ "$showlogs" = "showlogs" ] && echo "========================================="
+	
+	# 遍历所有macbind配置
+	for i in $(seq 0 $count); do
+		local enable=$(uci -q get $CONFIG.@macbind[$i].enable)
+		local macaddr=$(uci -q get $CONFIG.@macbind[$i].macaddr)
+		local hostname=$(uci -q get $CONFIG.@macbind[$i].hostname)
+		
+		# 跳过未启用或无效的条目
+		if [ "$enable" != "1" ]; then
+			[ "$showlogs" = "showlogs" ] && echo ""
+			[ "$showlogs" = "showlogs" ] && echo "Entry #$i: DISABLED - skipping"
+			continue
+		fi
+		
+		if [ -z "$macaddr" ]; then
+			[ "$showlogs" = "showlogs" ] && echo ""
+			[ "$showlogs" = "showlogs" ] && echo "Entry #$i: No MAC address - skipping"
+			continue
+		fi
+		
+		# 只处理有hostname的条目
+		if [ -n "$hostname" ]; then
+			[ "$showlogs" = "showlogs" ] && echo ""
+			[ "$showlogs" = "showlogs" ] && echo "Entry #$i: Checking hostname '$hostname'"
+			[ "$showlogs" = "showlogs" ] && echo "  Current MAC: $macaddr"
+			
+			local new_mac=$(get_mac_by_hostname "$hostname" "$showlogs")
+			
+			if [ -n "$new_mac" ]; then
+				# MAC地址规范化为大写
+				macaddr=$(echo "$macaddr" | tr 'a-z' 'A-Z')
+				new_mac=$(echo "$new_mac" | tr 'a-z' 'A-Z')
+				
+				if [ "$new_mac" != "$macaddr" ]; then
+					[ "$showlogs" = "showlogs" ] && echo "  >>> MAC CHANGED: $macaddr -> $new_mac <<<"
+					uci set $CONFIG.@macbind[$i].macaddr="$new_mac"
+					updated=1
+					logger -t timecontrol "MAC updated for $hostname: $macaddr -> $new_mac"
+				else
+					[ "$showlogs" = "showlogs" ] && echo "  MAC unchanged (already correct)"
+				fi
+			else
+				[ "$showlogs" = "showlogs" ] && echo "  !!! WARNING: Could not find MAC address for hostname '$hostname' !!!"
+				logger -t timecontrol "Warning: Could not find MAC address for hostname: $hostname"
+			fi
+		else
+			[ "$showlogs" = "showlogs" ] && echo ""
+			[ "$showlogs" = "showlogs" ] && echo "Entry #$i: MAC=$macaddr, no hostname saved - skipping"
+		fi
+	done
+	
+	# 如果有更新，提交更改
+	[ "$showlogs" = "showlogs" ] && echo ""
+	[ "$showlogs" = "showlogs" ] && echo "========================================="
+	if [ "$updated" -eq 1 ]; then
+		uci commit $CONFIG
+		[ "$showlogs" = "showlogs" ] && echo "Configuration updated - reloading service..."
+		logger -t timecontrol "Configuration updated, $updated entries changed"
+		return 0
+	else
+		[ "$showlogs" = "showlogs" ] && echo "No updates needed - all MACs are current"
+		return 1
+	fi
+}
+
+# 设置定时任务
+setup_cron_job() {
+	local scan_interval=$(uci_get_by_type basic scan_interval 0)
+	
+	# 删除现有的定时任务
+	crontab -l 2>/dev/null | grep -v "/etc/init.d/timecontrol scan" | crontab -
+	
+	# 如果间隔大于0，添加新的定时任务
+	if [ "$scan_interval" -gt 0 ]; then
+		(crontab -l 2>/dev/null; echo "*/$scan_interval * * * * /etc/init.d/timecontrol scan >/dev/null 2>&1") | crontab -
+		echo "Cron job set for every $scan_interval minutes"
+	else
+		echo "Automatic scanning disabled (interval = 0)"
+	fi
+}
+
+# 移除定时任务
+remove_cron_job() {
+	crontab -l 2>/dev/null | grep -v "/etc/init.d/timecontrol scan" | crontab -
+	echo "Cron job removed"
+}
+
 add_rule(){
-	local count=$(uci show $CONFIG | grep "@macbind" | sed -n '$p' | cut -d '[' -f 2 | cut -d ']' -f 1)
-	[ -n "$count" ] && [ "$count" -ge 0 ] && {
-		u_get() {
-			local ret=$(uci -q get $CONFIG.@macbind[$1].$2)
-			echo ${ret:=$3}
-		}
-		for i in $(seq 0 $count); do
-			local enable=$(u_get $i enable 0)
-			local macaddr=$(u_get $i macaddr)
-			local timeoff=$(u_get $i timeoff)
-			local timeon=$(u_get $i timeon)
-			local z1=$(u_get $i z1)
-			local z2=$(u_get $i z2)
-			local z3=$(u_get $i z3)
-			local z4=$(u_get $i z4)
-			local z5=$(u_get $i z5)
-			local z6=$(u_get $i z6)
-			local z7=$(u_get $i z7)
-			[ "$z1" == "1" ] && local Z1="Mon,"
-			[ "$z2" == "1" ] && local Z2="Tue,"
-			[ "$z3" == "1" ] && local Z3="Wed,"
-			[ "$z4" == "1" ] && local Z4="Thu,"
-			[ "$z5" == "1" ] && local Z5="Fri,"
-			[ "$z6" == "1" ] && local Z6="Sat,"
-			[ "$z7" == "1" ] && local Z7="Sun"
-			if [ -z $enable ] || [ -z $macaddr ] || [ -z $timeoff ] || [ -z $timeon ]; then
-				continue
-			fi
-			if [ "$enable" == "1" ]; then
-				iptables -t filter -I TIMECONTROL -m mac --mac-source $macaddr -m time --kerneltz --timestart $timeon --timestop $timeoff --weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -j DROP
-				iptables -t nat -I PREROUTING 1 -m mac --mac-source $macaddr -m time --kerneltz --timestart $timeon --timestop $timeoff --weekdays $Z1$Z2$Z3$Z4$Z5$Z6$Z7 -m comment --comment "TIMECONTROL" -j RETURN
-			fi
-		done
-	}
-	echo "/etc/init.d/timecontrol restart" > "/var/etc/timecontrol.include"
+	local count=$(uci show $CONFIG 2>/dev/null | grep "=macbind" | wc -l)
+	[ "$count" -eq 0 ] && return
+
+	local strict_mode=$(uci_get_by_type basic strict_mode 1)
+	count=$((count - 1))
+
+	for i in $(seq 0 $count); do
+		local enable=$(uci -q get $CONFIG.@macbind[$i].enable)
+		local control_mode=$(uci -q get $CONFIG.@macbind[$i].control_mode)
+		local ipaddr=$(uci -q get $CONFIG.@macbind[$i].ipaddr)
+		local macaddr=$(uci -q get $CONFIG.@macbind[$i].macaddr)
+		local timeoff=$(uci -q get $CONFIG.@macbind[$i].timeoff)
+		local timeon=$(uci -q get $CONFIG.@macbind[$i].timeon)
+		local z1=$(uci -q get $CONFIG.@macbind[$i].z1)
+		local z2=$(uci -q get $CONFIG.@macbind[$i].z2)
+		local z3=$(uci -q get $CONFIG.@macbind[$i].z3)
+		local z4=$(uci -q get $CONFIG.@macbind[$i].z4)
+		local z5=$(uci -q get $CONFIG.@macbind[$i].z5)
+		local z6=$(uci -q get $CONFIG.@macbind[$i].z6)
+		local z7=$(uci -q get $CONFIG.@macbind[$i].z7)
+
+		[ "$enable" != "1" ] && continue
+		[ -z "$timeon" ] || [ -z "$timeoff" ] && continue
+
+		# 生成匹配条件
+		local match_rule=""
+		if [ "$control_mode" = "ip" ] && [ -n "$ipaddr" ]; then
+			match_rule="-s $ipaddr"
+		elif [ -n "$macaddr" ] && is_mac_address "$macaddr"; then
+			match_rule="-m mac --mac-source $macaddr"
+		else
+			continue
+		fi
+
+		# 严格模式 → 不限制 conntrack 状态，宽松模式 → 只拦新连接
+		local conntrack_rule=""
+		[ "$strict_mode" != "1" ] && conntrack_rule="-m conntrack --ctstate NEW"
+
+		# 星期拼接
+		local weekdays=""
+		[ "$z1" = "1" ] && weekdays="${weekdays}Mon,"
+		[ "$z2" = "1" ] && weekdays="${weekdays}Tue,"
+		[ "$z3" = "1" ] && weekdays="${weekdays}Wed,"
+		[ "$z4" = "1" ] && weekdays="${weekdays}Thu,"
+		[ "$z5" = "1" ] && weekdays="${weekdays}Fri,"
+		[ "$z6" = "1" ] && weekdays="${weekdays}Sat,"
+		[ "$z7" = "1" ] && weekdays="${weekdays}Sun,"
+		weekdays=${weekdays%,}
+
+		local timeon_minutes=$(echo "$timeon" | awk -F: '{print $1 * 60 + $2}')
+		local timeoff_minutes=$(echo "$timeoff" | awk -F: '{print $1 * 60 + $2}')
+
+		if [ "$timeon_minutes" -ge "$timeoff_minutes" ]; then
+			# 跨日：拆成两段
+			iptables -t filter -I TIMECONTROL $match_rule $conntrack_rule \
+				-m time --kerneltz --timestart $timeon --timestop 23:59 \
+				--weekdays $weekdays -j DROP
+			iptables -t filter -I TIMECONTROL $match_rule $conntrack_rule \
+				-m time --kerneltz --timestart 00:00 --timestop $timeoff \
+				--weekdays $weekdays -j DROP
+		else
+			# 同日
+			iptables -t filter -I TIMECONTROL $match_rule $conntrack_rule \
+				-m time --kerneltz --timestart $timeon --timestop $timeoff \
+				--weekdays $weekdays -j DROP
+		fi
+	done
 }
 
 del_rule(){
@@ -65,16 +263,149 @@ del_rule(){
 }
 
 start(){
-	ENABLED=$(uci_get_by_type basic enable 0)
+	ENABLED=$(uci_get_by_type basic enabled 0)
 	[ "$ENABLED" != "1" ] && exit 0
+
+	setup_cron_job
+
 	iptables -t filter -N TIMECONTROL
 	iptables -t filter -I FORWARD -j TIMECONTROL
 	add_rule
 }
 
 stop(){
+	crontab -l 2>/dev/null | grep -v "/etc/init.d/timecontrol" | crontab -
+
 	iptables -t filter -D FORWARD -j TIMECONTROL 2>/dev/null
 	iptables -t filter -F TIMECONTROL 2>/dev/null
 	iptables -t filter -X TIMECONTROL 2>/dev/null
-	del_rule
 }
+
+# 扫描功能 - 支持showlogs参数
+scan(){
+	local showlogs="$1"
+	
+	if [ "$showlogs" = "showlogs" ]; then
+		echo "========================================="
+		echo "Timecontrol Hostname Scan"
+		echo "Time: $(date '+%Y-%m-%d %H:%M:%S')"
+		echo "========================================="
+	else
+		logger -t timecontrol "Starting hostname to MAC scan"
+	fi
+	
+	if scan_and_update_mac "$showlogs"; then
+		if [ "$showlogs" = "showlogs" ]; then
+			echo "Reloading service..."
+		fi
+		stop
+		start
+		if [ "$showlogs" = "showlogs" ]; then
+			echo "========================================="
+			echo "Scan and reload completed successfully!"
+			echo "========================================="
+		fi
+		logger -t timecontrol "Scan and reload completed successfully"
+		return 0
+	else
+		if [ "$showlogs" = "showlogs" ]; then
+			echo "========================================="
+		fi
+		logger -t timecontrol "Scan completed, no reload needed"
+		return 1
+	fi
+}
+
+# reload功能
+reload(){
+	echo "Reloading timecontrol service..."
+	stop
+	start
+	echo "Reload completed"
+}
+
+# ========================================
+# 4. 添加定時清理 conntrack 的 cron 任務
+# ========================================
+
+setup_cron_job() {
+	local scan_interval=$(uci_get_by_type basic scan_interval 0)
+	local strict_mode=$(uci_get_by_type basic strict_mode 1)
+
+	crontab -l 2>/dev/null | grep -v "/etc/init.d/timecontrol" | crontab -
+
+	if [ "$scan_interval" -gt 0 ]; then
+		(crontab -l 2>/dev/null; echo "*/$scan_interval * * * * /etc/init.d/timecontrol scan >/dev/null 2>&1") | crontab -
+	fi
+
+	if [ "$strict_mode" = "1" ]; then
+		# 每分钟强制检查（兜底）
+		(crontab -l 2>/dev/null; echo "* * * * * /etc/init.d/timecontrol enforce >/dev/null 2>&1") | crontab -
+
+		# 规则切换点触发 enforce
+		local count=$(uci show $CONFIG 2>/dev/null | grep "=macbind" | wc -l)
+		count=$((count - 1))
+		for i in $(seq 0 $count); do
+			local enable=$(uci -q get $CONFIG.@macbind[$i].enable)
+			local timeoff=$(uci -q get $CONFIG.@macbind[$i].timeoff)
+			local timeon=$(uci -q get $CONFIG.@macbind[$i].timeon)
+
+			[ "$enable" != "1" ] && continue
+			[ -z "$timeon" ] || [ -z "$timeoff" ] && continue
+
+			local h_on=$(echo $timeon | cut -d: -f1)
+			local m_on=$(echo $timeon | cut -d: -f2)
+			local h_off=$(echo $timeoff | cut -d: -f1)
+			local m_off=$(echo $timeoff | cut -d: -f2)
+
+			(crontab -l 2>/dev/null; echo "$m_on $h_on * * * /etc/init.d/timecontrol enforce >/dev/null 2>&1") | crontab -
+			(crontab -l 2>/dev/null; echo "$m_off $h_off * * * /etc/init.d/timecontrol enforce >/dev/null 2>&1") | crontab -
+		done
+	fi
+}
+
+# ★ 新增 enforce 命令（強制執行）
+enforce() {
+	local count=$(uci show $CONFIG 2>/dev/null | grep "=macbind" | wc -l)
+	[ "$count" -eq 0 ] && return 0
+
+	count=$((count - 1))
+	local now_hour=$(date +%H)
+	local now_min=$(date +%M)
+	local now_minutes=$((10#$now_hour * 60 + 10#$now_min))
+	local any_block=0
+
+	for i in $(seq 0 $count); do
+		local enable=$(uci -q get $CONFIG.@macbind[$i].enable)
+		local control_mode=$(uci -q get $CONFIG.@macbind[$i].control_mode)
+		local ipaddr=$(uci -q get $CONFIG.@macbind[$i].ipaddr)
+		local macaddr=$(uci -q get $CONFIG.@macbind[$i].macaddr)
+		local timeoff=$(uci -q get $CONFIG.@macbind[$i].timeoff)
+		local timeon=$(uci -q get $CONFIG.@macbind[$i].timeon)
+
+		[ "$enable" != "1" ] && continue
+		[ -z "$timeon" ] || [ -z "$timeoff" ] && continue
+
+		local timeon_minutes=$(echo "$timeon" | awk -F: '{print $1 * 60 + $2}')
+		local timeoff_minutes=$(echo "$timeoff" | awk -F: '{print $1 * 60 + $2}')
+
+		local in_block_time=0
+		if [ "$timeon_minutes" -ge "$timeoff_minutes" ]; then
+			[ "$now_minutes" -ge "$timeon_minutes" ] || [ "$now_minutes" -lt "$timeoff_minutes" ] && in_block_time=1
+		else
+			[ "$now_minutes" -ge "$timeon_minutes" ] && [ "$now_minutes" -lt "$timeoff_minutes" ] && in_block_time=1
+		fi
+
+		if [ "$in_block_time" = "1" ]; then
+			any_block=1
+			if [ "$control_mode" = "ip" ] && [ -n "$ipaddr" ]; then
+				conntrack -D -s $ipaddr 2>/dev/null || true
+			elif [ -n "$macaddr" ] && is_mac_address "$macaddr"; then
+				conntrack -D -m mac --mac-src $macaddr 2>/dev/null || true
+			fi
+		fi
+	done
+
+	[ "$any_block" -eq 0 ] && return 0
+}
+

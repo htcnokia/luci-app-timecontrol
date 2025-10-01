@@ -1,11 +1,71 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8\n"
+
 msgid "Internet Time Control"
 msgstr "Kontrola czasu w internecie"
 
-msgid "Status"
-msgstr "Status"
+msgid "Enable Time Control"
+msgstr "Włącz kontrolę czasu"
 
-msgid "Enabled"
-msgstr "Włączone"
+msgid "Hostname Scan Interval"
+msgstr "Interwał skanowania nazw hostów"
+
+msgid "Scan interval in minutes (0 to disable automatic scanning)"
+msgstr "Interwał skanowania w minutach (0 aby wyłączyć)"
+
+msgid "Scan Hostnames Now"
+msgstr "Skanuj nazwy hostów teraz"
+
+msgid "Scan Now"
+msgstr "Skanuj teraz"
+
+msgid "Scanning..."
+msgstr "Skanowanie..."
+
+msgid "Scan failed"
+msgstr "Skanowanie nieudane"
+
+msgid "Client Rules"
+msgstr "Reguły klientów"
+
+msgid "Configure time-based internet access rules for clients"
+msgstr "Konfiguruj czasowe reguły dostępu do internetu"
+
+msgid "Enable"
+msgstr "Włącz"
+
+msgid "MAC Address"
+msgstr "Adres MAC"
+
+msgid "Hostname"
+msgstr "Nazwa hosta"
+
+msgid "Block Start Time"
+msgstr "Czas rozpoczęcia blokady"
+
+msgid "Block End Time"
+msgstr "Czas zakończenia blokady"
+
+msgid "Mon"
+msgstr "Pn"
+
+msgid "Tue"
+msgstr "Wt"
+
+msgid "Wed"
+msgstr "Śr"
+
+msgid "Thu"
+msgstr "Czw"
+
+msgid "Fri"
+msgstr "Pt"
+
+msgid "Sat"
+msgstr "Sob"
+
+msgid "Sun"
+msgstr "Ndz"
 
 msgid "Running"
 msgstr "Działa"
@@ -13,38 +73,32 @@ msgstr "Działa"
 msgid "Not Running"
 msgstr "Nie działa"
 
-msgid "Client Settings"
-msgstr "Ustawienia klienta"
+msgid "Status"
+msgstr "Status"
 
 msgid "Collecting data..."
 msgstr "Zbieranie danych..."
 
-msgid "No Internet start time"
-msgstr "Blokuj od"
+msgid "Basic Settings"
+msgstr "Ustawienia podstawowe"
 
-msgid "No Internet end time"
-msgstr "Blokuj do"
+msgid "Configure internet access time control for network devices"
+msgstr "Konfiguruj kontrolę czasu dostępu do internetu dla urządzeń"
 
-msgid "Internet disabling settings for clients."
-msgstr "Ustawienia braku dostępu do internetu dla klientów."
+msgid "Warning: Turbo ACC/offload detected, may cause iptables rules of this plugin to fail"
+msgstr "Ostrzeżenie: Wykryto Turbo ACC/offload, może powodować niepowodzenie reguł iptables"
 
-msgid "Mo"
-msgstr "Pn."
+msgid "Process Turbo ACC"
+msgstr "Przetwórz Turbo ACC"
 
-msgid "Tu"
-msgstr "Wt."
+msgid "Processing..."
+msgstr "Przetwarzanie..."
 
-msgid "We"
-msgstr "Śr."
+msgid "Turbo ACC Result:"
+msgstr "Wynik Turbo ACC:"
 
-msgid "Th"
-msgstr "Czw."
+msgid "Error:"
+msgstr "Błąd:"
 
-msgid "Fr"
-msgstr "Pt."
-
-msgid "Sa"
-msgstr "Sob."
-
-msgid "Su"
-msgstr "Niedz."
+msgid "Failed to process Turbo ACC"
+msgstr "Nie udało się przetworzyć Turbo ACC"

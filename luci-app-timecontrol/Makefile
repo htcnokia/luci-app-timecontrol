@@ -1,15 +1,12 @@
-# Copyright (C) 2020 Lienol <lawlienol@gmail.com>
-#
-# This is free software, licensed under the GNU General Public License v3.
-#
-
 include $(TOPDIR)/rules.mk
 
-LUCI_TITLE:=LuCI support for Time Control
-LUCI_PKGARCH:=all
+PKG_NAME:=luci-app-timecontrol
+PKG_VERSION:=1.8
+PKG_RELEASE:=1
+
+LUCI_TITLE:=LuCI support for Internet Time Control
 LUCI_DEPENDS:=+luci-compat
-PKG_VERSION:=1.1
-PKG_RELEASE:=1-08082021
+LUCI_PKGARCH:=all
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

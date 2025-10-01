@@ -4,6 +4,9 @@ msgstr "Content-Type: text/plain; charset=UTF-8\n"
 msgid "Internet Time Control"
 msgstr "上网时间控制"
 
+msgid "Warning: Turbo ACC/offload detected, may cause iptables rules of this plugin to fail"
+msgstr "警告：检测到启用了类似 Turbo ACC (flow offload)的功能，这会导致本插件的 iptables 规则失效。"
+
 msgid "Enable Time Control"
 msgstr "启用时间控制"
 
@@ -12,9 +15,6 @@ msgstr "严格模式"
 
 msgid "Block ALL traffic including established connections. Recommended for better control."
 msgstr "会清除已经建立连接，推荐开启以取得更好的效果."
-
-msgid "Warning: Turbo ACC/offload detected, may cause iptables rules of this plugin to fail"
-msgstr "警告：检测到启用了类似 Turbo ACC (flow offload)的功能，这会导致本插件的 iptables 规则失效。"
 
 msgid "Hostname Scan Interval"
 msgstr "主机名扫描间隔"
